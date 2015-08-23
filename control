@@ -1,9 +1,9 @@
 Package: com.kyewei.musicscroller
 Name: MusicScroller
 Depends: mobilesubstrate
-Version: 0.1.0
+Version: 0.2.0
 Architecture: iphoneos-arm
-Description: Adds a pop-up indicator to the iOS 8.4 Music app alphabetical scroller
+Description: Adds a pop-up indicator to the alphabetical scrollers found in the Music apps, and various system applications
 Maintainer: Kye Wei
 Author: kyewei
 Section: Tweaks
