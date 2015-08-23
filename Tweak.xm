@@ -11,39 +11,12 @@
 @interface UITouchesEvent : NSObject
 @end
 
-@class SKUIIndexBarControl;
-
-
-@protocol SKUIIndexBarControlDelegate <NSObject>
-@optional
-- (void)indexBarControl:(SKUIIndexBarControl *)arg1 didSelectEntryAtIndexPath:(NSIndexPath *)arg2;
-//-(void)indexBarControlDidSelectBeyondBottom:(id)arg1;
-//-(void)indexBarControlDidSelectBeyondTop:(id)arg1;
-
-@end
-
-@protocol SKUIIndexBarControlDataSource <NSObject>
-//@optional
-//-(id)combinedEntryForIndexBarControl:(id)arg1;
-//-(long long)numberOfSectionsInIndexBarControl:(id)arg1;
-
-@required
-//-(long long)indexBarControl:(id)arg1 numberOfEntriesInSection:(long long)arg2;
-//-(id)indexBarControl:(id)arg1 entryAtIndexPath:(id)arg2;
-- (SKUIAttributedStringIndexBarEntry *)indexBarControl:(SKUIIndexBarControl *)arg1 entryAtIndexPath:(NSIndexPath *)arg2;
-@end
-
-
-
-
 @interface SKUIIndexBarControl : UIControl
 - (BOOL)beginTrackingWithTouch:(UITouch *)arg1 withEvent:(UITouchesEvent *)arg2;
 - (BOOL)continueTrackingWithTouch:(UITouch *)arg1 withEvent:(UITouchesEvent *)arg2;
 - (void)endTrackingWithTouch:(UITouch *)arg1 withEvent:(UITouchesEvent *)arg2;
-- (NSObject<SKUIIndexBarControlDataSource> *)dataSource;
-//- (id)defaultTextAttributes;
-- (NSObject<SKUIIndexBarControlDelegate> *)delegate;
-- (void)setDelegate:(NSObject<SKUIIndexBarControlDelegate> *)arg1;
+- (void)_sendSelectionForTouch:(UITouch *)arg1 withEvent:(UITouchesEvent *)arg2;
+- (SKUIAttributedStringIndexBarEntry *)_entryAtIndexPath:(NSIndexPath *)arg1;
 
 - (void) updateLetterView:(UIView*)view withText:(NSString *) text;
 - (void) createLetterView;
@@ -55,39 +28,6 @@
 - (void)setLetterView:(UIView *)view;
 
 @end
-
-
-@interface MusicLibraryViewController : NSObject <SKUIIndexBarControlDelegate,SKUIIndexBarControlDataSource>
-- (id) view;
-//- (SKUIAttributedStringIndexBarEntry *)indexBarControl:(SKUIIndexBarControl *)arg1 entryAtIndexPath:(NSIndexPath *)arg2; from protocol
-//- (void)indexBarControl:(SKUIIndexBarControl *)arg1 didSelectEntryAtIndexPath:(NSIndexPath *)arg2; in protocol
-//- (void)indexBarControlDidSelectBeyondBottom:(id)arg1;
-//- (void)indexBarControlDidSelectBeyondTop:(id)arg1;
-
-
-@end
-
-
-
-
-
-
-//Why does hooking protocols not work? SIGH. Use MSHookMessageEx down in setDelegate.
-//%hook SKUIIndexBarControlDelegate
-void *(*oldIndexBarControlDidSelectEntryAtIndexPath)(id self, SEL _cmd, SKUIIndexBarControl *arg1, NSIndexPath *arg2);
-
-void newIndexBarControlDidSelectEntryAtIndexPath(id self, SEL _cmd, SKUIIndexBarControl *arg1, NSIndexPath *arg2) {
-    (*oldIndexBarControlDidSelectEntryAtIndexPath)(self, _cmd, arg1, arg2);
-
-    [arg1 createLetterView];
-    [arg1.letterView setHidden:NO];
-    SKUIAttributedStringIndexBarEntry *entry = [arg1.dataSource indexBarControl: arg1 entryAtIndexPath:arg2];
-    if (![NSStringFromClass([entry class]) isEqualToString:@"SKUIAttributedStringIndexBarEntry"] )
-        return;
-
-    [arg1 setScrollSelection:[[entry attributedString] string]];
-    [arg1 updateLetterView: [arg1 letterView] withText: [arg1 scrollSelection]];
-}
 
 
 %hook SKUIIndexBarControl
@@ -204,26 +144,23 @@ void newIndexBarControlDidSelectEntryAtIndexPath(id self, SEL _cmd, SKUIIndexBar
     }
 }
 
-- (void)setDelegate:(NSObject<SKUIIndexBarControlDelegate> *)arg1 {
+- (void)_sendSelectionForTouch:(UITouch *)arg1 withEvent:(UITouchesEvent *)arg2 {
     %orig;
-    // couldn't override <SKUIIndexBarControlDelegate>'s
-    //   @selector(indexBarControl:didSelectEntryAtIndexPath:) so....
+    //%log;
+    [self createLetterView];
+    [[self letterView] setHidden:NO];
+    NSIndexPath *_lastSelectedIndexPath = MSHookIvar<NSIndexPath*>(self, "_lastSelectedIndexPath");
+    SKUIAttributedStringIndexBarEntry *entry = _lastSelectedIndexPath? [self _entryAtIndexPath:_lastSelectedIndexPath] : nil;
+    if (![NSStringFromClass([entry class]) isEqualToString:@"SKUIAttributedStringIndexBarEntry"] )
+        return;
+    [self setScrollSelection:[[entry attributedString] string]];
 
-    MSHookMessageEx([arg1 class],
-                    @selector(indexBarControl:didSelectEntryAtIndexPath:),
-                    (IMP)&newIndexBarControlDidSelectEntryAtIndexPath,
-                    (IMP *)&oldIndexBarControlDidSelectEntryAtIndexPath);
+    [self updateLetterView: [self letterView] withText:[self scrollSelection]];
 }
-
 
 - (BOOL)beginTrackingWithTouch:(UITouch *)arg1 withEvent:(UITouchesEvent *)arg2 {
     BOOL result = %orig;
-    //%log;
-    //MusicLibraryViewController *d = [self delegate];
-    //NSString *string = [d scrollSelection];
-    //NSLog(@"%@",string);
     [self createLetterView];
-    //UIView * view = [[self delegate] letterView];
 
     [[self letterView] setHidden:NO];
     [self updateLetterView: [self letterView] withText:[self scrollSelection]];
@@ -232,12 +169,7 @@ void newIndexBarControlDidSelectEntryAtIndexPath(id self, SEL _cmd, SKUIIndexBar
 }
 - (BOOL)continueTrackingWithTouch:(UITouch *)arg1 withEvent:(UITouchesEvent *)arg2 {
     BOOL result = %orig;
-    //%log;
-    //MusicLibraryViewController *d = [self delegate];
-    //NSString *string = [d scrollSelection];
-    //NSLog(@"%@",string);
     [self createLetterView];
-
     [self updateLetterView: [self letterView] withText:[self scrollSelection]];
 
     return result;
@@ -245,17 +177,10 @@ void newIndexBarControlDidSelectEntryAtIndexPath(id self, SEL _cmd, SKUIIndexBar
 - (void)endTrackingWithTouch:(UITouch *)arg1 withEvent:(UITouchesEvent *)arg2 {
     %orig;
 
-    //%log;
-    //MusicLibraryViewController *d = [self delegate];
-    //NSString *string = [d scrollSelection];
-    //NSLog(@"%@",string);
     [self createLetterView];
-
     [self setScrollSelection:nil];
     [self updateLetterView: [self letterView] withText:[self scrollSelection]];
     [[self letterView] setHidden:YES];
-
-
 }
 
 %end
